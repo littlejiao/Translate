@@ -1,5 +1,7 @@
 package edu.kndev.translate;
 
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 
@@ -11,10 +13,10 @@ import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import org.jsoup.Jsoup;
-
 import org.jsoup.nodes.Document;
-import org.jsoup.select.Elements;
 
 import lombok.extern.log4j.Log4j;
 
@@ -24,14 +26,23 @@ import lombok.extern.log4j.Log4j;
  */
 @Log4j
 public class SougouTranslate {
+	private boolean status = true;
+
 	public static void main(String[] args) {
 		SougouTranslate a = new SougouTranslate();
-		String result = a.getResult("酸枣咖啡");
+		String result = a.getResult("自然语言处理");
+		System.out.println(a.getStatus());
+	}
+
+	public boolean getStatus() {
+		return status;
 	}
 
 	public String getResult(String text) {
-		if (text == null || text == "")
+		if (text == null || text == "") {
 			return null;
+		}
+
 		String result = "";
 		CloseableHttpClient httpClient = HttpClients.createDefault();
 		log.info("开始爬取SouGou翻译");
@@ -46,6 +57,7 @@ public class SougouTranslate {
 		String method = "GET";
 		// 输入的语言
 		String q = rawurlencode(text);
+		// String q = text;
 		// 请求的url
 		String url = "http://api.ai.sogou.com/pub/nlp/translate?q=" + q + "&from=" + from + "&to=" + to;
 		// 从url获得下面的信息用于加密
@@ -58,7 +70,7 @@ public class SougouTranslate {
 		// 签名的前缀
 		String pre = "sac-auth-v1/" + ak + "/" + System.currentTimeMillis() / 1000 + "/3600";
 		// 签名的数据
-		String calc = pre + "\n" + "GET" + "\n" + "api.ai.sogou.com" + "\n" + "/pub/nlp/translate" + "\n" + arg;
+		String calc = pre + "\n" + "GET" + "\n" + host + "\n" + path + "\n" + arg;
 		// 根据签名的前缀和数据生成对应的密钥
 		String hmac = sha256_HMAC(calc, sk.getBytes(StandardCharsets.UTF_8));
 
@@ -68,43 +80,50 @@ public class SougouTranslate {
 		HttpGet httpGet = new HttpGet(url);
 		httpGet.addHeader("Content-Type", "application/json");
 		httpGet.addHeader("Authorization", sign);
-
+		String body_content = "";
 		try {
 			CloseableHttpResponse response = httpClient.execute(httpGet);
 			// System.out.println(response.getStatusLine().getStatusCode());
 			Document doc = Jsoup.parse(EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8));
-			result = doc.getElementsByTag("body").text();
-			//System.out.println(result);
+			body_content = doc.getElementsByTag("body").text();
+			JSONObject json = new JSONObject(body_content);
+			if ((Integer) json.get("status") == 0) {
+				JSONArray trans_result = (JSONArray) json.get("trans_result");
+				JSONObject trans_text = (JSONObject) trans_result.get(0);
+				result = trans_text.getString("trans_text");
+				if (result.length() != 0) {
+					log.info("从SouGou 找到" + "“" + text + "”" + "的英文翻译" + result);
+				} else {
+					log.info("没有从SouGou 中找到" + text + "的英文翻译");
+				}
+			}
 			response.close();
-		} catch (Exception e) {
+		} catch (IOException e) {
 			e.printStackTrace();
+			status = false;
 			log.info("SouGou 翻译失败");
-		}
-	
-		String trans_text = result.split(",")[2];
-		result = trans_text.substring(14, trans_text.length() - 4);
-		if (result.length() != 0) {
-			log.info("从SouGou 找到" + "“" + text + "”" + "的英文翻译" + result);
-		} else {
-			log.info("没有从SouGou 中找到" + text + "的英文翻译");
+
 		}
 		return result;
 	}
 
 	// php中的urlencode
-	private static String rawurlencode(String query) {
+	private String rawurlencode(String query) {
 		String queryCode = null;
+
 		try {
 			queryCode = URLEncoder.encode(query, String.valueOf(StandardCharsets.UTF_8)).replace("*", "%2A");
-		} catch (Exception e) {
+		} catch (UnsupportedEncodingException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
 			log.info("SouGou翻译编码错误");
 		}
+
 		return queryCode;
 	}
 
 	// 密钥生成
-	private static String sha256_HMAC(String message, byte[] secret) {
+	private String sha256_HMAC(String message, byte[] secret) {
 		String hash = "";
 		try {
 			Mac sha256_HMAC = Mac.getInstance("HmacSHA256");

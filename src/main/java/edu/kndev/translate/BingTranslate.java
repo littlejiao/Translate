@@ -2,7 +2,6 @@ package edu.kndev.translate;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,39 +12,43 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
+import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.json.JSONObject;
 
 import lombok.extern.log4j.Log4j;
 
 @Log4j
 public class BingTranslate {
-	CloseableHttpClient client;
-
+	private boolean status = true;
+	private CloseableHttpClient client;
+	
+	public static void main(String[] args) throws Exception {
+		BingTranslate bt = new BingTranslate();
+		String result = bt.getResult("机器学习");
+		System.out.println(bt.getStatus());
+	}
+	
 	public BingTranslate() {
 		// TODO Auto-generated constructor stub
 		client = HttpClients.createDefault();
 	}
 
-	public static void main(String[] args) throws Exception {
-		BingTranslate bt = new BingTranslate();
-		String result = bt.getResult("酸枣咖啡");
+	public boolean getStatus() {
+		return status;
 	}
-
+	
 	public String getResult(String text) {
 		return getTranslate(text);
 	}
 
 	private String getTranslate(String text) {
 		String IG = "";
-
 		String url = "http://cn.bing.com/translator/";
 		HttpGet httpGet = new HttpGet(url);
 
@@ -58,28 +61,23 @@ public class BingTranslate {
 				"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
 		httpGet.addHeader("Accept-Encoding", "gzip, deflate");
 		httpGet.addHeader("Accept-Language", "zh-CN,zh;q=0.9");
-		httpGet.addHeader("referer", "http://www.bing.com/translator/");
-		CloseableHttpResponse response = null;
+		httpGet.addHeader("referer", "http://www.bing.com/translator/");	
 		try {
-			response = client.execute(httpGet);
-		} catch (ClientProtocolException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			log.info("Bing 获取参数IG失败");
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			log.info("Bing 获取参数IG失败");
-		}
-		try {
+			CloseableHttpResponse response = client.execute(httpGet);
 			HttpEntity entity = response.getEntity();
 			Document doc = Jsoup.parse(EntityUtils.toString(entity));
 			Element ele = doc.getElementsByTag("script").get(1);
 			IG = ele.toString().split(",")[4].substring(4, 36);
 			response.close();
-		} catch(IOException e) {
-			// TODO: handle finally clause
+		} catch (ClientProtocolException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
+			status = false;
+			log.info("Bing 获取参数IG失败");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			status = false;
 			log.info("Bing 获取参数IG失败");
 		}
 		
@@ -101,7 +99,7 @@ public class BingTranslate {
 		} catch (UnsupportedEncodingException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-			log.info("Bing翻译编码错误");
+			log.info("Bing翻译post参数编码错误");
 		}
 		httpPost.setHeader("Host", "cn.bing.com");
 		httpPost.setHeader("Connection", "keep-alive");
@@ -114,74 +112,33 @@ public class BingTranslate {
 		httpPost.setHeader("Accept", "*/*");
 		httpPost.setHeader("Accept-Language", "zh-CN,zh;q=0.9");
 		httpPost.setHeader("referer", "http://cn.bing.com/translator/");
-		CloseableHttpResponse resp = null;
 		try {
-			resp = client.execute(httpPost);
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			log.info("Bing翻译失败");
-		}
-		try {
+			CloseableHttpResponse resp = client.execute(httpPost);
 			HttpEntity entity = resp.getEntity();
 			Document document = Jsoup.parse(EntityUtils.toString(entity));
 			String body_content = document.getElementsByTag("body").text();
 
 			JSONObject json = new JSONObject(body_content);
-			int status = (Integer) json.get("statusCode");
+			int statuscode = (Integer) json.get("statusCode");
 			result = json.getString("translationResponse");
-			if (status == 200 && result.length() != 0) {
+			if (statuscode == 200 && result.length() != 0) {
 				log.info("从Bing 找到" + "“" + text + "”" + "的英文翻译" + result);
 			} else {
 				log.info("没有从Bing 中找到" + text + "的英文翻译");
 			}
 			resp.close();
-		} catch (IOException e) {
+		} catch (ClientProtocolException e) {
+			// TODO Auto-generated catch block
 			e.printStackTrace();
+			status = false;
+			log.info("Bing翻译失败");
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+			status = false;
 			log.info("Bing翻译失败");
 		}
 		return result;
 	}
 
-//	private String getIG(){
-//		String IG = "";
-//
-//		String url = "http://cn.bing.com/translator/";
-//		HttpGet httpGet = new HttpGet(url);
-//
-//		httpGet.addHeader("Host", "cn.bing.com");
-//		httpGet.addHeader("Connection", "keep-alive");
-//		httpGet.addHeader("Upgrade-Insecure-Requests", "1");
-//		httpGet.addHeader("User-Agent",
-//				"Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36");
-//		httpGet.addHeader("Accept",
-//				"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8");
-//		httpGet.addHeader("Accept-Encoding", "gzip, deflate");
-//		httpGet.addHeader("Accept-Language", "zh-CN,zh;q=0.9");
-//		httpGet.addHeader("referer", "http://www.bing.com/translator/");
-//		CloseableHttpResponse response = null;
-//		try {
-//			response = client.execute(httpGet);
-//		} catch (ClientProtocolException e) {
-//			// TODO Auto-generated catch block
-//			e.printStackTrace();
-//			log.info("Bing 获取参数IG失败");
-//		} catch (IOException e) {
-//			// TODO Auto-generated catch block
-//			e.printStackTrace();
-//			log.info("Bing 获取参数IG失败");
-//		}
-//		try {
-//			HttpEntity entity = response.getEntity();
-//			Document doc = Jsoup.parse(EntityUtils.toString(entity));
-//			Element ele = doc.getElementsByTag("script").get(1);
-//			IG = ele.toString().split(",")[4].substring(4, 36);
-//			response.close();
-//		} catch(IOException e) {
-//			// TODO: handle finally clause
-//			e.printStackTrace();
-//			log.info("Bing 获取参数IG失败");
-//		}
-//		return IG;
-//	}
 }
